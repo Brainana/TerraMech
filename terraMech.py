@@ -11,6 +11,12 @@ import os
 from gpiozero import Servo
 from time import sleep
 
+cameraEnable = True;
+motorEnable = True;
+tensorflowEnable = False;
+servoEnable = True;
+speakerEnable = True;
+
 camera = picamera.PiCamera()
 
 #servo = Servo(27)
@@ -18,16 +24,17 @@ camera = picamera.PiCamera()
 for f in glob.glob("lawn*.jpg"):
 	os.remove(f)
 
-# loading Tensorflow weed model
-prediction = CustomImagePrediction()
-prediction.setModelTypeAsResNet()
-prediction.setModelPath("resnet.hdf5")
-prediction.setJsonPath("weeds_model_class.json")
-print("loading Tensorflow weed model")
-modelLoadStart=datetime.datetime.now()
-prediction.loadModel(num_objects=9)
-modelLoadEnd=datetime.datetime.now()
-print("Finished loading model in " + str(modelLoadEnd-modelLoadStart))
+if tensorflowEnable:
+	# loading Tensorflow weed model
+	prediction = CustomImagePrediction()
+	prediction.setModelTypeAsResNet()
+	prediction.setModelPath("resnet.hdf5")
+	prediction.setJsonPath("weeds_model_class.json")
+	print("loading Tensorflow weed model")
+	modelLoadStart=datetime.datetime.now()
+	prediction.loadModel(num_objects=9)
+	modelLoadEnd=datetime.datetime.now()
+	print("Finished loading model in " + str(modelLoadEnd-modelLoadStart))
 
 
 def motorInit():
@@ -60,8 +67,9 @@ def servoSpin(tf):
 servo = Servo(27)
 
 for x in range(0,5):
-	print ("Robot is  moveing forward")
-	motorForward(0.625)
+	if motorEnable:
+		print ("Robot is  moveing forward")
+		motorForward(0.625)
 
 	# Pause the robot so the camera can take a steady picture
 	time.sleep(1)
@@ -70,23 +78,25 @@ for x in range(0,5):
 
 	imageName = 'lawn' + str(x) + '.jpg'
 	print ("Taking a picture of the lawn.  Image name is " + imageName)
-	camera.capture(imageName)
+	if cameraEnable:
+		camera.capture(imageName)
+		if tensorflowEnable:
+			startImgDetection=datetime.datetime.now()
+			predictions, probabilities = prediction.predictImage(imageName, result_count=3)
+			endImgDetection=datetime.datetime.now()
+			imgDetectionDelta=endImgDetection-startImgDetection
+			print("Image detected in " + str(imgDetectionDelta))
+			for eachPrediction, eachProbability in zip(predictions, probabilities):
+				print(eachPrediction , " : " , eachProbability)
+				if eachPrediction == "Chinee apple":
+					os.rename(imageName, 'lawn' + str(x) + "_Chinee_apple.jpg")
+					weedFound = True
+					if servoEnable:
+						servoSpin(0.8);
+					break
 
-	startImgDetection=datetime.datetime.now()
-	predictions, probabilities = prediction.predictImage(imageName, result_count=3)
-	endImgDetection=datetime.datetime.now()
-	imgDetectionDelta=endImgDetection-startImgDetection
-	print("Image detected in " + str(imgDetectionDelta))
-	for eachPrediction, eachProbability in zip(predictions, probabilities):
-		print(eachPrediction , " : " , eachProbability)
-		if eachPrediction == "Chinee apple":
-			os.rename(imageName, 'lawn' + str(x) + "_Chinee_apple.jpg")
-			weedFound = True
-			servoSpin(0.8);
-			break
-
-	if weedFound == False: 		
-		os.rename(imageName, 'lawn' + str(x) + "_grass.jpg")
+			if weedFound == False: 		
+				os.rename(imageName, 'lawn' + str(x) + "_grass.jpg")
 
 camera.close()
  
